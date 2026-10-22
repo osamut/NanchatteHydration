@@ -48,9 +48,9 @@
 
 依存モジュールの導入、サインイン、TrustedHosts／実行ポリシーの変更はツールでは行いません。
 
-## 2. ツールファイルのコピーと展開
+## 2. ツール実行用ファイルのダウンロードと展開
 
-配布 ZIP を `C:\Tools\AzureLocalVmToolkit` などへ展開します。`tools`、`examples`、`tests` を同じ構成で置く必要があり、スクリプト単体のコピーでは動きません。
+配布 ZIP ファイルをダウンロード を `C:\Tools\AzureLocalVmToolkit` などへ展開します。`tools`、`examples`、`tests` を同じ構成で置く必要があり、スクリプト単体のコピーでは動きません。
 
 ```powershell
 Expand-Archive -LiteralPath 'C:\Packages\AzureLocalVmToolkit-final.zip' `
