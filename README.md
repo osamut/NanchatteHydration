@@ -1,35 +1,36 @@
-# Azure Local VM 登録ツール
+# なんちゃって Hydration ＝ Azure Local VM 登録ツール
 
-Azure Local 上に既にある Hyper-V VM を、**Azure 管理の VM（Azure Local VM enabled by Azure Arc）として Azure に登録する PowerShell ツール**です。
+バックアップツールなどで Azure Local に移行した Hyper-V クラスター VM を、**Azure Local VM（Azure Local VM enabled by Azure Arc）として Azure に登録する PowerShell ベースのツール**です。
 
-> **ラボ専用です。** 公開プレビュー API（`createFromLocal`）を使います。製品資料では、非管理 VM を Azure Local VM へ変換する方法は未サポートです。
-> Azure Migrate の機能でも、正式な移行手順でもありません。動作確認は単一ラボのみで、本番利用は想定していません。
-> 実行前に VM のバックアップを取り、他の変更が入らない保守時間帯に実行してください。
+> **検証環境専用です。** 公開プレビュー API（`createFromLocal`）を使い、あくまでも Hydration 検証用にサンプルで作ったものです。
+> 処理を実行するにはクラスターの管理者権限と仮想マシン内の OS に対する管理権限が必要です。
+> 正式な移行手順ではありませんし、動作確認は単一ラボのみで、本番利用は想定していません。
+> テスト環境においても、実行前に VM のバックアップを取り、他の変更が入らない保守時間帯に実行してください。
 
-## 1. 概要
+## 0. 概要
 
-### ツールの3つの処理
+### 本ツールが内部的に実施している 3 つの処理
 
-`tools\Invoke-AzureLocalVmSetup.ps1` が、次の3つの処理を **登録 → NIC 置換 → ゲスト Arc 接続の順に一つのコマンドで続けて実行**します。
+`tools\Invoke-AzureLocalVmSetup.ps1` 実行時に、次の3つの処理を続けて実行します。
 
 | 処理 | 内容 | 個別に実行する場合 |
 | --- | --- | --- |
 | **登録** | 既存の Hyper-V VM を、Azure 上の新しい親リソース（`Microsoft.HybridCompute/machines`）と VM インスタンスとして登録する。既存の Azure リソースは採用も上書きもせず拒否する。 | `tools\Register-AzureLocalVm.ps1` |
-| **NIC 置換** | 元の Hyper-V NIC の IP 設定を退避し、Azure 管理 NIC に移す。通信確認後、確認を得て元の NIC だけを削除する。通信が短時間途切れる。 | `tools\Replace-AzureLocalVmNic.ps1` |
+| **NIC 置換** | Azure API を使って NIC を追加する。元の Hyper-V NIC の IP 設定を退避し、Azure 管理 NIC に移す。通信確認後、確認を得て元の NIC だけを削除する。通信が短時間途切れるので注意。 | `tools\Replace-AzureLocalVmNic.ps1` |
 | **ゲスト Arc 接続** | VM 内に構成エージェントを導入し、Azure から VM のゲストを管理できるようにする。 | `tools\Complete-AzureLocalVm.ps1` |
 
-### 作業の流れ
+### 実際の作業手順
 
-| 手順 | 内容 | 参照 |
-| --- | --- | --- |
-| ① | 条件の確認 | 第2節 |
-| ② | ツールファイルのコピーと展開 | 第3節 |
-| ③ | 設定ファイルの編集 | 第4節 |
-| ④ | 処理の実行（登録 → NIC 置換 → ゲスト Arc 接続） | 第5節 |
+| 手順 | 内容 | 
+| --- | --- |
+| 1 | 条件の確認 |
+| 2 | ツール(ファイル)のダウンロードと展開 |
+| 3 | 設定ファイルの編集 |
+| 4 | 処理の実行（登録 → NIC 置換 → ゲスト Arc 接続） |
 
-実行後の確認と失敗時の対応は第6節、対応範囲と制限は第7節にあります。
+実行後の確認と失敗時の対応は補足１、対応範囲と制限は補足２にあります。
 
-## 2. ① 条件の確認
+## 1. 条件の確認
 
 実行前に、次の条件を満たしているか確認してください。
 
@@ -47,7 +48,7 @@ Azure Local 上に既にある Hyper-V VM を、**Azure 管理の VM（Azure Loc
 
 依存モジュールの導入、サインイン、TrustedHosts／実行ポリシーの変更はツールでは行いません。
 
-## 3. ② ツールファイルのコピーと展開
+## 2. ツールファイルのコピーと展開
 
 配布 ZIP を `C:\Tools\AzureLocalVmToolkit` などへ展開します。`tools`、`examples`、`tests` を同じ構成で置く必要があり、スクリプト単体のコピーでは動きません。
 
@@ -58,9 +59,9 @@ Expand-Archive -LiteralPath 'C:\Packages\AzureLocalVmToolkit-final.zip' `
 
 更新時も ZIP 内のファイルを一式上書きし、**新しい PowerShell ウィンドウ**で作業してください。ZIP には設定ファイルやバックアップは含まれないため、それらは上書きされません。
 
-## 4. ③ 設定ファイルの編集
+## 3. 設定ファイルの編集
 
-`examples\registration.example.json` を `registration.lab.json` にコピーして編集します。例の値は架空です。**パスワード、トークン、SAS は書かないでください**（未定義の項目は拒否されます）。
+テンプレートファイル `examples\registration.example.json` を `registration.lab.json` にコピーして編集します。例の値は架空です。**パスワード、トークン、SAS は書かないでください**（未定義の項目は拒否されます）。
 
 ```powershell
 Set-Location C:\Tools\AzureLocalVmToolkit
@@ -84,7 +85,7 @@ notepad.exe .\registration.lab.json
 
 `_comment_` で始まる項目（`_comment_ExpectedVmId`、`_comment_NetworkInterfaceIds`、`_comment_DataDiskIds`）は説明用で、ツールは無視します。
 
-## 5. ④ 処理の実行
+## 4. 処理の実行
 
 ### 進め方
 
@@ -155,7 +156,7 @@ try {
 - **IP**: 元の IP を使うなら `PrivateIPAddress` は省略します。元の IP が logical network の pool 外なら停止するため、変更を承認する場合だけ pool 内の未使用 IP を指定します。
 - **内部の処理順**: 事前検査（Azure、所有ノード、ゲスト、元 NIC／IP／pool）→ 登録 → NIC 置換（バックアップ作成後に Azure 管理 NIC を接続し、IP を移して通信確認、確認後に元 NIC を削除）→ ゲスト Arc 接続（構成エージェント導入と Arc 接続）。
 
-### 補足: 処理を個別に実行する／NIC 置換を省く
+### (参考): 処理を個別に実行する／NIC 置換を省く
 
 通常は不要です。
 
@@ -171,7 +172,7 @@ try {
 流れは同じ（プラン表示 → `-WhatIf` → `-Execute`）で、引数は `Get-Help .\tools\<スクリプト名>.ps1 -Full` で確認できます。
 NIC 置換を省いて登録 → ゲスト Arc 接続だけ行う場合は、`$run` から `ReplaceExistingNetworkAdapter`、`NetworkInterfaceName`、`BackupPath`、`ConvertDhcpToStatic` と `-AcceptNetworkInterruption` を外します。既存 NIC と IP／DNS は変更されませんが、この構成の実機動作は未検証です。
 
-## 6. 結果の確認と失敗時の対応
+## 補足１. 結果の確認と失敗時の対応
 
 ### 成功の目安
 
@@ -211,7 +212,7 @@ NIC 置換を省いて登録 → ゲスト Arc 接続だけ行う場合は、`$r
 
 元 NIC が残っていれば、保存したバックアップの設定を手動で復元できます。削除後は同じ名前や MAC で作り直しても元の GUID には戻らないため、VM のバックアップから復旧してください。
 
-## 7. 対応範囲と制限
+## 補足２. 対応範囲と制限
 
 **対象外**: 移行、ディスクコピー、一般化、VM の停止／起動、Azure リソースの削除、自動ロールバック、Azure パブリッククラウドへの移行。
 
@@ -237,7 +238,7 @@ Get-VMHardDiskDrive -VMName <VM名> | ForEach-Object { Get-VHD -Path $_.Path } |
 - 通信が短時間途切れます。アプリが NIC GUID／IP に固定バインドしている場合は別途確認が必要です。
 - 必要な RBAC の最小セットは未確認です。
 
-## 8. 検証状況とテスト
+## 補足３. 検証状況とテスト
 
 - **オフライン検証**: モックによるテスト計 215 件が、Windows PowerShell 5.1 と PowerShell 7 で通っています。
 - **実環境**: ラボの Windows VM（差分ディスクでない通常の VM）で、登録・NIC 置換・ゲスト Arc 接続（`2026-04-01-preview`）の成功を確認しています。停止／起動／再起動は行っていません。
@@ -249,11 +250,3 @@ pwsh -NoProfile -File .\tests\AzureLocalVmCompletion.Tests.ps1
 pwsh -NoProfile -File .\tests\AzureLocalVmNicReplacement.Tests.ps1
 pwsh -NoProfile -File .\tests\AzureLocalVmSetup.Tests.ps1
 ```
-
-## 9. 配布 ZIP の作成
-
-```powershell
-.\tools\New-AzureLocalVmToolkit.ps1 -OutputPath C:\Packages\AzureLocalVmToolkit-final.zip
-```
-
-固定の15ファイルのみを収録します。設定ファイル、バックアップ、レポート、資格情報は収録しません。既存の出力ファイルは上書きしません。
